@@ -1,0 +1,108 @@
+2025-07-13 14:59:48,815 | __main__ | INFO | Starting TCAP v3 Automated Trading System
+2025-07-13 14:59:48,815 | __main__ | INFO | ============================================================
+2025-07-13 14:59:48,815 | __main__ | INFO | Starting Capital: $5,000.00
+2025-07-13 14:59:48,816 | __main__ | INFO | Target (12 months): $44,650.00
+2025-07-13 14:59:48,816 | __main__ | INFO | Max Position Size: 12%
+2025-07-13 14:59:48,816 | __main__ | INFO | Daily Loss Limit: $250
+2025-07-13 14:59:48,816 | __main__ | INFO | Max Leverage: 5x
+2025-07-13 14:59:48,816 | __main__ | INFO | Paper Trading: YES
+2025-07-13 14:59:48,817 | __main__ | INFO | ============================================================
+2025-07-13 14:59:48,817 | __main__ | INFO | Initializing trading components...
+2025-07-13 14:59:48,818 | order_executor | INFO | Starting TCAP v3 Order Executor...
+2025-07-13 14:59:48,818 | order_executor | INFO | Paper trading mode enabled
+2025-07-13 14:59:48,818 | __main__ | INFO | Current account balance: $5000.00
+2025-07-13 14:59:48,819 | market_scanner | INFO | Starting TCAP v3 Market Scanner...
+2025-07-13 14:59:48,819 | market_scanner | INFO | Starting market scan #1
+2025-07-13 14:59:49,261 | market_scanner | INFO | Found 449 active USDT futures pairs
+2025-07-13 14:59:49,358 | market_scanner | INFO | Retrieved ticker data for 526 symbols
+2025-07-13 14:59:49,360 | market_scanner | INFO | Scan #1 completed in 0.54s
+2025-07-13 14:59:49,360 | market_scanner | INFO | Scanned 487 pairs, 7 candidates found
+2025-07-13 14:59:49,360 | market_scanner | INFO | Top candidates:
+2025-07-13 14:59:49,360 | market_scanner | INFO |    1. AINUSDT: +36.7% (Vol: $152.3M)
+2025-07-13 14:59:49,360 | market_scanner | INFO |    2. AUCTIONUSDT: +26.3% (Vol: $216.5M)
+2025-07-13 14:59:49,361 | market_scanner | INFO |    3. PUMPUSDT: +23.2% (Vol: $1320.0M)
+2025-07-13 14:59:49,361 | market_scanner | INFO |    4. 1INCHUSDT: +20.4% (Vol: $182.2M)
+2025-07-13 14:59:49,361 | market_scanner | INFO |    5. MOCAUSDT: +19.1% (Vol: $175.2M)
+2025-07-13 14:59:58,829 | __main__ | INFO |    Runtime: 0:00:00.002898
+2025-07-13 14:59:58,829 | __main__ | INFO |    Capital: $5000.00 ($+0.00 today)
+2025-07-13 14:59:58,829 | __main__ | INFO |    Positions: 0
+2025-07-13 14:59:58,829 | __main__ | INFO |    Trades: 0 total, 0 profitable
+2025-07-13 14:59:58,830 | __main__ | INFO |    Win Rate: N/A
+2025-07-13 14:59:58,830 | __main__ | INFO |    Risk Exposure: 0.0%
+2025-07-13 14:59:58,830 | __main__ | INFO |    Status: ACTIVE
+2025-07-13 15:00:48,633 | __main__ | INFO | Cleaning up resources...
+2025-07-13 15:00:48,637 | __main__ | INFO |    Runtime: 0:00:49.809727
+2025-07-13 15:00:48,638 | __main__ | INFO |    Initial Capital: $5000.00
+2025-07-13 15:00:48,638 | __main__ | INFO |    Final Capital: $5000.00
+2025-07-13 15:00:48,638 | __main__ | INFO |    Total Return: +0.00%
+2025-07-13 15:00:48,638 | __main__ | INFO |    Total Trades: 0
+2025-07-13 15:00:48,638 | __main__ | INFO |    Successful Trades: 0
+2025-07-13 15:04:19,262 | __main__ | INFO | Starting TCAP v3 Automated Trading System
+2025-07-13 15:04:19,262 | __main__ | INFO | ============================================================
+2025-07-13 15:04:19,263 | __main__ | INFO | Starting Capital: $5,000.00
+2025-07-13 15:04:19,263 | __main__ | INFO | Target (12 months): $44,650.00
+2025-07-13 15:04:19,263 | __main__ | INFO | Max Position Size: 12%
+2025-07-13 15:04:19,263 | __main__ | INFO | Daily Loss Limit: $250
+2025-07-13 15:04:19,263 | __main__ | INFO | Max Leverage: 5x
+2025-07-13 15:04:19,263 | __main__ | INFO | Paper Trading: YES
+2025-07-13 15:04:19,263 | __main__ | INFO | ============================================================
+2025-07-13 15:04:19,263 | __main__ | INFO | Initializing trading components...
+2025-07-13 15:04:19,264 | order_executor | INFO | Starting TCAP v3 Order Executor...
+2025-07-13 15:04:19,264 | order_executor | INFO | Paper trading mode enabled
+2025-07-13 15:04:19,264 | __main__ | INFO | Current account balance: $5000.00
+2025-07-13 15:04:19,264 | market_scanner | INFO | Starting TCAP v3 Market Scanner...
+2025-07-13 15:04:19,264 | market_scanner | INFO | Starting market scan #1
+2025-07-13 15:04:19,641 | market_scanner | INFO | Found 449 active USDT futures pairs
+2025-07-13 15:04:19,792 | market_scanner | INFO | Retrieved ticker data for 526 symbols
+2025-07-13 15:04:19,794 | market_scanner | INFO | Scan #1 completed in 0.53s
+2025-07-13 15:04:19,794 | market_scanner | INFO | Scanned 487 pairs, 6 candidates found
+2025-07-13 15:04:19,794 | market_scanner | INFO | Top candidates:
+2025-07-13 15:04:19,794 | market_scanner | INFO |    1. AUCTIONUSDT: +24.6% (Vol: $219.1M)
+2025-07-13 15:04:19,794 | market_scanner | INFO |    2. 1INCHUSDT: +21.3% (Vol: $182.6M)
+2025-07-13 15:04:19,795 | market_scanner | INFO |    3. PUMPUSDT: +20.9% (Vol: $1322.3M)
+2025-07-13 15:04:19,795 | market_scanner | INFO |    4. OCEANUSDT: +18.9% (Vol: $65.8M)
+2025-07-13 15:04:19,795 | market_scanner | INFO |    5. AGIXUSDT: +18.8% (Vol: $113.7M)
+2025-07-13 15:04:29,274 | __main__ | INFO | Starting continuous monitoring system...
+2025-07-13 15:04:29,274 | __main__ | INFO | Starting continuous monitoring...
+2025-07-13 15:04:29,275 | __main__ | INFO | TCAP v3 is now running continuously in the background
+2025-07-13 15:04:29,275 | __main__ | INFO | Press Ctrl+C to stop the system
+2025-07-13 15:04:34,287 | __main__ | INFO | Auto-updating trading system...
+2025-07-13 15:04:35,049 | __main__ | INFO | Continuous update cycle completed
+2025-07-13 15:06:27,318 | __main__ | INFO | Starting TCAP v3 Automated Trading System
+2025-07-13 15:06:27,319 | __main__ | INFO | ============================================================
+2025-07-13 15:06:27,319 | __main__ | INFO | Starting Capital: $5,000.00
+2025-07-13 15:06:27,319 | __main__ | INFO | Target (12 months): $44,650.00
+2025-07-13 15:06:27,320 | __main__ | INFO | Max Position Size: 12%
+2025-07-13 15:06:27,320 | __main__ | INFO | Daily Loss Limit: $250
+2025-07-13 15:06:27,321 | __main__ | INFO | Max Leverage: 5x
+2025-07-13 15:06:27,321 | __main__ | INFO | Paper Trading: YES
+2025-07-13 15:06:27,321 | __main__ | INFO | ============================================================
+2025-07-13 15:06:27,321 | __main__ | INFO | Initializing trading components...
+2025-07-13 15:06:27,322 | order_executor | INFO | Starting TCAP v3 Order Executor...
+2025-07-13 15:06:27,322 | order_executor | INFO | Paper trading mode enabled
+2025-07-13 15:06:27,323 | __main__ | INFO | Current account balance: $5000.00
+2025-07-13 15:06:27,323 | market_scanner | INFO | Starting TCAP v3 Market Scanner...
+2025-07-13 15:06:27,323 | market_scanner | INFO | Starting market scan #1
+2025-07-13 15:06:27,700 | market_scanner | INFO | Found 449 active USDT futures pairs
+2025-07-13 15:06:27,844 | market_scanner | INFO | Retrieved ticker data for 526 symbols
+2025-07-13 15:06:27,846 | market_scanner | INFO | Scan #1 completed in 0.52s
+2025-07-13 15:06:27,847 | market_scanner | INFO | Scanned 487 pairs, 7 candidates found
+2025-07-13 15:06:27,847 | market_scanner | INFO | Top candidates:
+2025-07-13 15:06:27,848 | market_scanner | INFO |    1. AUCTIONUSDT: +23.3% (Vol: $220.3M)
+2025-07-13 15:06:27,848 | market_scanner | INFO |    2. 1INCHUSDT: +22.6% (Vol: $182.8M)
+2025-07-13 15:06:27,848 | market_scanner | INFO |    3. PUMPUSDT: +21.3% (Vol: $1322.9M)
+2025-07-13 15:06:27,849 | market_scanner | INFO |    4. OCEANUSDT: +18.9% (Vol: $65.8M)
+2025-07-13 15:06:27,849 | market_scanner | INFO |    5. AGIXUSDT: +18.8% (Vol: $113.7M)
+2025-07-13 15:06:37,332 | __main__ | INFO | Starting continuous monitoring system...
+2025-07-13 15:06:37,333 | __main__ | INFO | Starting continuous monitoring...
+2025-07-13 15:06:37,333 | __main__ | INFO | TCAP v3 is now running continuously in the background
+2025-07-13 15:06:37,334 | __main__ | INFO | Press Ctrl+C to stop the system
+2025-07-13 15:06:42,347 | __main__ | INFO | Auto-updating trading system...
+2025-07-13 15:06:43,238 | __main__ | INFO | Continuous update cycle completed
+2025-07-13 15:07:13,243 | __main__ | INFO | Auto-updating trading system...
+2025-07-13 15:07:13,273 | __main__ | INFO | Continuous update cycle completed
+2025-07-13 15:07:43,284 | __main__ | INFO | Auto-updating trading system...
+2025-07-13 15:07:43,306 | __main__ | INFO | Continuous update cycle completed
+2025-07-13 15:08:13,318 | __main__ | INFO | Auto-updating trading system...
+2025-07-13 15:08:13,357 | __main__ | INFO | Continuous update cycle completed
+2025-07-13 15:08:23,982 | __main__ | INFO | Cleaning up resources...
