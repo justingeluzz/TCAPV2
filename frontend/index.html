@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCAP v2 - Crypto Trading Analysis Platform</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <i class="fas fa-chart-line"></i>
+                    TCAP v2
+                </h1>
+                <div class="header-controls">
+                    <button id="refreshBtn" class="btn btn-primary">
+                        <i class="fas fa-sync-alt"></i>
+                        Force Refresh
+                    </button>
+                    <div class="server-info">
+                        <div class="server-startup">
+                            <i class="fas fa-power-off"></i>
+                            <span id="serverStartupTime">Server: Loading...</span>
+                        </div>
+                        <div class="status-indicator">
+                            <span id="statusText">Starting Live Monitor...</span>
+                            <div id="statusDot" class="status-dot live-pulse"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-coins"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="totalPairs">0</h3>
+                    <p>Total Pairs Monitored</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-fire"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="topMovers">0</h3>
+                    <p>Top Movers (>10%)</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="highVolume">0</h3>
+                    <p>High Volume (>$10M)</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-bell"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="alerts">0</h3>
+                    <p>Active Alerts</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- First Hits Leaderboard -->
+        <div class="first-hits-section">
+            <div class="first-hits-header">
+                <h2>
+                    <i class="fas fa-trophy"></i>
+                    <span id="firstHitsTitle">First to Hit - Leaderboard</span>
+                </h2>
+                <div class="first-hits-controls">
+                    <span id="currentThreshold" class="threshold-display">Threshold: Loading...</span>
+                    <span id="sessionTime">Session: 0m</span>
+                    <button id="resetFirstHits" class="btn btn-secondary">
+                        <i class="fas fa-redo"></i>
+                        Reset Session
+                    </button>
+                </div>
+            </div>
+            <div id="firstHitsContainer" class="first-hits-container">
+                <div class="first-hits-empty">
+                    <i class="fas fa-clock"></i>
+                    <p>Waiting for first hits...</p>
+                    <small>The first coins to hit 15% gain will appear here</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-section">
+            <div class="filters-container">
+                <div class="filter-group">
+                    <label for="minGain">Min Gain %:</label>
+                    <input type="number" id="minGain" value="1" min="0" max="100" step="0.1">
+                </div>
+                <div class="filter-group">
+                    <label for="minVolume">Min Volume ($M):</label>
+                    <input type="number" id="minVolume" value="1" min="0" step="1">
+                </div>
+                <div class="filter-group">
+                    <label for="sortBy">Sort by:</label>
+                    <select id="sortBy">
+                        <option value="gain">% Gain</option>
+                        <option value="volume">Volume</option>
+                        <option value="symbol">Symbol</option>
+                    </select>
+                </div>
+                <button id="exportBtn" class="btn btn-secondary">
+                    <i class="fas fa-download"></i>
+                    Export CSV
+                </button>
+                <button id="syncFiltersBtn" class="btn btn-primary">
+                    <i class="fas fa-sync"></i>
+                    Sync Filters
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h2>🔴 LIVE - Real-time Continuous Monitoring</h2>
+                <div class="table-info">
+                    <div class="last-update">
+                        Auto-updates every 15s | Last: <span id="lastUpdate">Never</span>
+                    </div>
+                    <div class="server-uptime">
+                        <span id="serverUptimeInfo">Loading server info...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="cryptoTable" class="crypto-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Current Price</th>
+                            <th>1h Ago Price</th>
+                            <th>% Gain (1h)</th>
+                            <th>24h Volume</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay hidden">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Fetching latest crypto data...</p>
+            </div>
+        </div>
+
+        <!-- Alert Modal -->
+        <div id="alertModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Set Price Alert</h3>
+                    <span class="close" id="closeModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p>Symbol: <span id="alertSymbol"></span></p>
+                    <div class="form-group">
+                        <label for="alertThreshold">Alert when gain exceeds (%):</label>
+                        <input type="number" id="alertThreshold" value="15" min="0" max="100" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="alertMethod">Notification method:</label>
+                        <select id="alertMethod">
+                            <option value="browser">Browser Notification</option>
+                            <option value="telegram">Telegram (Coming Soon)</option>
+                            <option value="discord">Discord (Coming Soon)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="saveAlert" class="btn btn-primary">Save Alert</button>
+                    <button id="cancelAlert" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

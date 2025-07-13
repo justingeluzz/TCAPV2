@@ -1,0 +1,36 @@
+🚀 TCAP v2 - Quick Start Guide
+
+WHAT YOU HAVE:
+✅ Complete web application for crypto trading analysis
+✅ Real-time Binance API integration  
+✅ Modern responsive dashboard
+✅ Data export and alert system
+
+TO GET STARTED:
+1. Double-click "start.bat" or "start.ps1"
+2. Wait for backend to start (http://localhost:5000)
+3. Open "index.html" in your browser
+4. Start monitoring crypto movements!
+
+FILES CREATED:
+- index.html     → Main dashboard
+- styles.css     → Modern styling  
+- script.js      → Frontend logic
+- backend.py     → Python API server
+- requirements.txt → Dependencies
+- README.md      → Full documentation
+- start.bat      → Windows startup script
+- start.ps1      → PowerShell startup script
+
+FEATURES IMPLEMENTED:
+✅ Step 1: Get all USDT futures pairs
+✅ Step 2: Calculate 1-hour price movements  
+✅ Step 3: Filter by 24h volume (>$10M)
+✅ Step 4: Identify coins with >10-15% gains
+✅ Step 5: Export to CSV/Excel
+✅ Step 6: Browser notification alerts
+✅ Step 7: Real-time dashboard monitoring
+
+The platform automatically scans hundreds of crypto pairs and identifies the top movers based on your criteria. Perfect for finding trading opportunities!
+
+Happy trading! 📈
