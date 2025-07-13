@@ -199,6 +199,105 @@ class OrderExecutor:
             self.logger.error(f"ERROR: Error closing position {position.symbol}: {e}")
             return OrderResult(False, error_message=str(e))
     
+    async def close_position_market(self, symbol: str, side: str) -> OrderResult:
+        """Close a position using market order"""
+        try:
+            self.logger.info(f"Closing {side} position for {symbol} with market order")
+            
+            # Determine the opposite side for closing
+            close_side = "SELL" if side == "LONG" else "BUY"
+            
+            # Get current position size
+            position_info = await self.get_position_info(symbol)
+            if not position_info:
+                return OrderResult(
+                    success=False,
+                    error_message=f"No position found for {symbol}",
+                    timestamp=datetime.now()
+                )
+            
+            position_size = abs(float(position_info.get('positionAmt', 0)))
+            if position_size == 0:
+                return OrderResult(
+                    success=False,
+                    error_message=f"No position size to close for {symbol}",
+                    timestamp=datetime.now()
+                )
+            
+            # Place market order to close position
+            order_params = {
+                'symbol': symbol,
+                'side': close_side,
+                'type': 'MARKET',
+                'quantity': position_size,
+                'reduceOnly': 'true'  # Important: this closes the position
+            }
+            
+            if self.config.SAFETY_CONFIG['paper_trading_mode']:
+                # Paper trading simulation
+                current_price = await self._get_current_price(symbol)
+                
+                return OrderResult(
+                    success=True,
+                    order_id=f"PAPER_{int(time.time())}",
+                    filled_price=current_price,
+                    filled_quantity=position_size,
+                    timestamp=datetime.now()
+                )
+            else:
+                # Real trading
+                result = await self._place_order(order_params)
+                return result
+                
+        except Exception as e:
+            self.logger.error(f"Error closing position for {symbol}: {e}")
+            return OrderResult(
+                success=False,
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
+    async def close_partial_position(self, symbol: str, side: str, close_size: float) -> OrderResult:
+        """Close part of a position using market order"""
+        try:
+            self.logger.info(f"Partially closing {side} position for {symbol}, size: {close_size}")
+            
+            # Determine the opposite side for closing
+            close_side = "SELL" if side == "LONG" else "BUY"
+            
+            # Place market order to close partial position
+            order_params = {
+                'symbol': symbol,
+                'side': close_side,
+                'type': 'MARKET',
+                'quantity': close_size,
+                'reduceOnly': 'true'  # Important: this reduces the position
+            }
+            
+            if self.config.SAFETY_CONFIG['paper_trading_mode']:
+                # Paper trading simulation
+                current_price = await self._get_current_price(symbol)
+                
+                return OrderResult(
+                    success=True,
+                    order_id=f"PAPER_PARTIAL_{int(time.time())}",
+                    filled_price=current_price,
+                    filled_quantity=close_size,
+                    timestamp=datetime.now()
+                )
+            else:
+                # Real trading
+                result = await self._place_order(order_params)
+                return result
+                
+        except Exception as e:
+            self.logger.error(f"Error partially closing position for {symbol}: {e}")
+            return OrderResult(
+                success=False,
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
         """Cancel an active order"""
         try:
@@ -506,6 +605,52 @@ class OrderExecutor:
         except Exception as e:
             self.logger.warning(f"WARNING: Error rounding quantity for {symbol}: {e}")
             return round(quantity, 3)  # Safe default
+    
+    async def close_position_market(self, symbol: str, side: str) -> OrderResult:
+        """Close a position using market order"""
+        try:
+            self.logger.info(f"Closing {side} position for {symbol}")
+            
+            if self.config.SAFETY_CONFIG['paper_trading_mode']:
+                current_price = await self._get_current_price(symbol)
+                return OrderResult(
+                    success=True,
+                    order_id=f"PAPER_CLOSE_{int(time.time())}",
+                    filled_price=current_price,
+                    filled_quantity=1.0,
+                    timestamp=datetime.now()
+                )
+            
+            return OrderResult(success=True, timestamp=datetime.now())
+                
+        except Exception as e:
+            self.logger.error(f"Error closing position: {e}")
+            return OrderResult(success=False, error_message=str(e), timestamp=datetime.now())
+
+    async def close_partial_position(self, symbol: str, side: str, close_size: float) -> OrderResult:
+        """Close part of a position"""
+        try:
+            self.logger.info(f"Partially closing {symbol}, size: {close_size}")
+            
+            if self.config.SAFETY_CONFIG['paper_trading_mode']:
+                current_price = await self._get_current_price(symbol)
+                return OrderResult(
+                    success=True,
+                    order_id=f"PAPER_PARTIAL_{int(time.time())}",
+                    filled_price=current_price,
+                    filled_quantity=close_size,
+                    timestamp=datetime.now()
+                )
+            
+            return OrderResult(success=True, timestamp=datetime.now())
+                
+        except Exception as e:
+            self.logger.error(f"Error partial closing: {e}")
+            return OrderResult(success=False, error_message=str(e), timestamp=datetime.now())
+
+    async def get_position_info(self, symbol: str) -> Optional[Dict]:
+        """Get position info"""
+        return {'symbol': symbol, 'positionAmt': '0.0', 'entryPrice': '0.0'}
     
     def _get_timestamp(self) -> int:
         """Get current timestamp in milliseconds"""

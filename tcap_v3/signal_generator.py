@@ -527,24 +527,295 @@ class SignalGenerator:
         except Exception as e:
             self.logger.error(f"ERROR: Error generating signal for {market_data.symbol}: {e}")
             return None
+        
+    def _evaluate_enhanced_long_signal(self, symbol: str, market_data: MarketData, technical_data: TechnicalSignals) -> tuple[float, str]:
+        """Enhanced LONG signal evaluation with optimized RSI bands and MACD filtering"""
+        confidence = 0.0
+        signal_reasons = []
+        
+        try:
+            # 1. ENHANCED RSI ANALYSIS (30 points max)
+            rsi = technical_data.rsi_14  # Fixed: use rsi_14 instead of rsi
+            config = TcapConfig.SIGNAL_FILTERING
+            
+            # Determine RSI context and apply appropriate bands
+            if 15 <= market_data.price_change_24h <= 25:  # Trend continuation
+                if config['rsi_trend_continuation_min'] <= rsi <= config['rsi_trend_continuation_max']:
+                    confidence += 30
+                    signal_reasons.append(f"RSI trend continuation ({rsi:.1f})")
+                elif config['rsi_optimal_long_min'] <= rsi <= config['rsi_optimal_long_max']:
+                    confidence += 25
+                    signal_reasons.append(f"RSI optimal range ({rsi:.1f})")
+                else:
+                    confidence += 5
+            else:  # Reversal context
+                if config['rsi_reversal_oversold'] <= rsi <= 40:
+                    confidence += 25
+                    signal_reasons.append(f"RSI oversold reversal ({rsi:.1f})")
+                elif 40 <= rsi <= 60:
+                    confidence += 15
+                    signal_reasons.append(f"RSI neutral bullish ({rsi:.1f})")
+                else:
+                    confidence -= 5  # Penalty for poor RSI
+            
+            # 2. ENHANCED MACD ANALYSIS (25 points max)
+            macd_line = getattr(technical_data, 'macd_line', 0)
+            macd_signal = getattr(technical_data, 'macd_signal', 0)
+            macd_histogram = getattr(technical_data, 'macd_histogram', 0)
+            
+            # Favor crossovers above zero line for stronger momentum
+            if config['require_macd_above_zero']:
+                if macd_line > 0 and macd_signal > 0:
+                    if macd_line > macd_signal and macd_histogram > 0:
+                        confidence += 25
+                        signal_reasons.append("MACD bullish above zero")
+                    elif macd_line > macd_signal:
+                        confidence += 15
+                        signal_reasons.append("MACD crossover above zero")
+                    else:
+                        confidence += 5
+                else:
+                    # Below zero but still bullish
+                    if macd_line > macd_signal and macd_histogram > 0:
+                        confidence += 10
+                        signal_reasons.append("MACD bullish below zero")
+                    else:
+                        confidence -= 3
+            
+            # MACD signal strength confirmation
+            macd_strength = abs(macd_line - macd_signal)
+            if macd_strength >= config['macd_signal_strength_min']:
+                confidence += 5
+                signal_reasons.append("Strong MACD signal")
+            
+            # 3. VOLUME DIVERGENCE DETECTION (20 points max)
+            if config['volume_divergence_enabled']:
+                volume_score, volume_reason = self._analyze_volume_divergence(market_data, technical_data)
+                confidence += volume_score
+                if volume_reason:
+                    signal_reasons.append(volume_reason)
+            
+            # 4. PRICE MOMENTUM ANALYSIS (25 points max)
+            price_gain = market_data.price_change_24h
+            recent_gain = getattr(market_data, 'price_change_4h', 0)
+            
+            if price_gain >= 20 and recent_gain >= 5:
+                confidence += 25
+                signal_reasons.append(f"Strong momentum ({price_gain:.1f}%/24h, {recent_gain:.1f}%/4h)")
+            elif price_gain >= 15 and recent_gain >= 3:
+                confidence += 20
+                signal_reasons.append(f"Good momentum ({price_gain:.1f}%/24h)")
+            elif price_gain >= 15:
+                confidence += 10
+                signal_reasons.append(f"Basic momentum ({price_gain:.1f}%/24h)")
+            else:
+                return 0, "Insufficient price momentum"
+            
+        except Exception as e:
+            self.logger.error(f"Error in enhanced LONG evaluation for {symbol}: {e}")
+            return 0, "Evaluation error"
+        
+        # Apply additional filters and penalties
+        confidence = self._apply_enhanced_filters(symbol, market_data, confidence, signal_reasons)
+        
+        reason = " + ".join(signal_reasons[:3])  # Top 3 reasons
+        return min(100, max(0, confidence)), reason
 
-# Example usage
-async def main():
-    """Test signal generation"""
-    generator = SignalGenerator()
+    def _analyze_volume_divergence(self, market_data: MarketData, technical_data: TechnicalSignals) -> tuple[float, str]:
+        """Detect volume divergence: price up but volume declining = weak move"""
+        try:
+            config = TcapConfig.SIGNAL_FILTERING
+            
+            # Get volume trend data
+            volume_ratio = market_data.volume_ratio
+            price_gain = market_data.price_change_24h
+            
+            # Volume consistency check (placeholder - would need historical volume data)
+            volume_trend = getattr(market_data, 'volume_trend', 'neutral')
+            
+            if price_gain > 15:  # Price is rising
+                if volume_ratio >= 3.0 and volume_trend == 'increasing':
+                    return 20, f"Volume confirmation ({volume_ratio:.1f}x)"
+                elif volume_ratio >= 2.0 and volume_trend == 'increasing':
+                    return 15, f"Volume support ({volume_ratio:.1f}x)"
+                elif volume_ratio >= 3.0 and volume_trend == 'neutral':
+                    return 10, f"High volume ({volume_ratio:.1f}x)"
+                elif volume_ratio < 1.5 or volume_trend == 'decreasing':
+                    return -10, f"Volume divergence warning ({volume_ratio:.1f}x)"
+                else:
+                    return 5, f"Adequate volume ({volume_ratio:.1f}x)"
+            
+            return 0, ""
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing volume divergence: {e}")
+            return 0, ""
+
+    def _apply_enhanced_filters(self, symbol: str, market_data: MarketData, base_confidence: float, reasons: list) -> float:
+        """Apply additional filters and risk penalties"""
+        try:
+            adjusted_confidence = base_confidence
+            
+            # Market quality filters
+            market_cap = getattr(market_data, 'market_cap', 0)
+            if market_cap >= 100_000_000:
+                adjusted_confidence += 5
+            elif market_cap < 50_000_000:
+                adjusted_confidence -= 10
+                reasons.append("Small cap penalty")
+            
+            # Liquidity check
+            volume_24h = getattr(market_data, 'volume_24h', 0)
+            if volume_24h >= 10_000_000:
+                adjusted_confidence += 5
+            elif volume_24h < 5_000_000:
+                adjusted_confidence -= 5
+                reasons.append("Low liquidity")
+            
+            # Pullback analysis
+            pullback = getattr(market_data, 'pullback_from_high', 0)
+            if 3 <= pullback <= 8:
+                adjusted_confidence += 10
+                reasons.append(f"Healthy pullback ({pullback:.1f}%)")
+            elif pullback > 20:
+                adjusted_confidence -= 5
+                reasons.append("Deep pullback")
+            
+            return adjusted_confidence
+            
+        except Exception as e:
+            self.logger.error(f"Error applying enhanced filters: {e}")
+            return base_confidence
     
-    try:
-        # Run signal generation for a short time
-        task = asyncio.create_task(generator.start_signal_generation())
-        
-        # Let it run for 2 minutes
-        await asyncio.sleep(120)
-        
-        # Stop the scanner
-        await generator.market_scanner.stop_scanner()
-        
-    except Exception as e:
-        print(f"ERROR: Error: {e}")
+    async def generate_enhanced_signal(self, market_data: MarketData, technical_signals: TechnicalSignals) -> Optional[TradingSignal]:
+        """Generate enhanced trading signal with improved filtering and analysis"""
+        try:
+            self.logger.debug(f"ENHANCED_SIGNAL: Analyzing {market_data.symbol}")
+            self.logger.debug(f"  Price gain 24h: {market_data.price_change_24h:.2f}%")
+            self.logger.debug(f"  Volume ratio: {market_data.volume_24h/1000000:.1f}M")
+            
+            # Enhanced LONG evaluation
+            long_confidence, long_reason = self._evaluate_enhanced_long_signal(market_data.symbol, market_data, technical_signals)
+            
+            if long_confidence >= 65:  # Enhanced threshold
+                # Calculate enhanced position parameters
+                entry_price = market_data.current_price
+                
+                # Enhanced stop loss calculation would be handled by ATR manager
+                stop_loss = entry_price * 0.92  # Temporary, will be overridden by ATR
+                
+                # Enhanced take profit calculations
+                take_profit_1 = entry_price * 1.30  # 30% target
+                take_profit_2 = entry_price * 1.70  # 70% target
+                
+                # Calculate position size based on confidence
+                base_position_pct = 0.10  # 10% base
+                confidence_multiplier = 1.0 + ((long_confidence - 65) / 100)  # Scale with confidence
+                position_size_pct = min(0.15, base_position_pct * confidence_multiplier)  # Max 15%
+                
+                signal = TradingSignal(
+                    symbol=market_data.symbol,
+                    signal_type="LONG",
+                    confidence=long_confidence,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit_1=take_profit_1,
+                    take_profit_2=take_profit_2,
+                    position_size=0,  # Will be calculated by risk manager
+                    leverage=5,
+                    price_change_24h=market_data.price_change_24h,
+                    volume_ratio=market_data.volume_ratio,
+                    rsi=technical_signals.rsi_14,  # Fixed: use rsi_14
+                    macd_bullish=technical_signals.macd_bullish,  # Fixed: direct access
+                    pullback_percent=getattr(market_data, 'pullback_from_high', 0),
+                    near_support=technical_signals.near_support,  # Fixed: direct access
+                    market_cap=getattr(market_data, 'market_cap', 0),
+                    signal_time=datetime.now(),
+                    bitcoin_trend=self.bitcoin_trend,
+                    market_context="normal",
+                    reason=long_reason
+                )
+                
+                self.logger.info(f"ENHANCED_SIGNAL: Generated LONG for {market_data.symbol}")
+                self.logger.info(f"  Confidence: {long_confidence:.1f}%")
+                self.logger.info(f"  Reasoning: {long_reason}")
+                
+                return signal
+            
+            # Enhanced SHORT evaluation (if LONG fails)
+            short_confidence, short_reason = self._evaluate_enhanced_short_signal(market_data.symbol, market_data, technical_signals)
+            
+            if short_confidence >= 75:  # Higher threshold for shorts
+                entry_price = market_data.current_price
+                stop_loss = entry_price * 1.08  # 8% stop for shorts
+                take_profit_1 = entry_price * 0.85  # 15% target
+                take_profit_2 = entry_price * 0.70  # 30% target
+                
+                signal = TradingSignal(
+                    symbol=market_data.symbol,
+                    signal_type="SHORT",
+                    confidence=short_confidence,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit_1=take_profit_1,
+                    take_profit_2=take_profit_2,
+                    position_size=0,
+                    leverage=5,
+                    price_change_24h=market_data.price_change_24h,
+                    volume_ratio=market_data.volume_ratio,
+                    rsi=technical_signals.rsi_14,  # Fixed: use rsi_14
+                    macd_bullish=technical_signals.macd_bullish,  # Fixed: direct access
+                    pullback_percent=getattr(market_data, 'pullback_from_high', 0),
+                    near_support=technical_signals.near_support,  # Fixed: direct access
+                    market_cap=getattr(market_data, 'market_cap', 0),
+                    signal_time=datetime.now(),
+                    bitcoin_trend=self.bitcoin_trend,
+                    market_context="normal",
+                    reason=short_reason
+                )
+                
+                self.logger.info(f"ENHANCED_SIGNAL: Generated SHORT for {market_data.symbol}")
+                self.logger.info(f"  Confidence: {short_confidence:.1f}%")
+                
+                return signal
+            
+            # No signal generated
+            self.logger.debug(f"  No enhanced signal for {market_data.symbol} (LONG: {long_confidence:.1f}%, SHORT: {short_confidence:.1f}%)")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"ERROR: Error generating enhanced signal for {market_data.symbol}: {e}")
+            return None
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    def _evaluate_enhanced_short_signal(self, symbol: str, market_data: MarketData, technical_data: TechnicalSignals) -> tuple[float, str]:
+        """Enhanced SHORT signal evaluation (placeholder implementation)"""
+        try:
+            confidence = 0.0
+            signal_reasons = []
+            
+            # Basic SHORT criteria - highly restrictive
+            price_gain = market_data.price_change_24h
+            rsi = getattr(technical_data, 'rsi_14', 50)  # Fixed: use rsi_14
+            
+            # Only consider shorts for extremely overbought conditions
+            if price_gain >= 80 and rsi >= 85:
+                confidence += 40
+                signal_reasons.append(f"Extreme overextension ({price_gain:.1f}%, RSI {rsi:.1f})")
+                
+                # Volume declining check
+                volume_ratio = market_data.volume_ratio
+                if volume_ratio < 2.0:  # Volume declining
+                    confidence += 30
+                    signal_reasons.append("Volume exhaustion")
+                
+                # Additional bearish signals
+                if hasattr(technical_data, 'macd_bearish') and technical_data.macd_bearish:
+                    confidence += 15
+                    signal_reasons.append("MACD bearish")
+            
+            reason = " + ".join(signal_reasons) if signal_reasons else "Insufficient SHORT criteria"
+            return confidence, reason
+            
+        except Exception as e:
+            self.logger.error(f"Error in enhanced SHORT evaluation: {e}")
+            return 0, "Evaluation error"

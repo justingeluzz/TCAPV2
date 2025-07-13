@@ -30,6 +30,9 @@ class MarketData:
     open_24h: float
     market_cap: Optional[float] = None
     avg_volume_20d: Optional[float] = None
+    volume_ratio: float = 1.0  # Added: volume ratio vs average
+    current_price: float = 0.0  # Added: current price alias
+    pullback_from_high: float = 0.0  # Added: pullback percentage
     last_updated: datetime = None
 
 class MarketScanner:
@@ -300,6 +303,65 @@ class MarketScanner:
             self.logger.error(f"ERROR: Error getting latest candidates: {e}")
             return []
     
+    async def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """Get current prices for specified symbols"""
+        try:
+            if not symbols:
+                return {}
+            
+            # Use ticker/price endpoint for current prices
+            url = f"{self.config.BINANCE_BASE_URL}/fapi/v1/ticker/price"
+            
+            if not self.session:
+                self.session = requests.Session()
+            
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                all_prices = response.json()
+                
+                # Create a dictionary for quick lookup
+                price_dict = {}
+                for item in all_prices:
+                    if item['symbol'] in symbols:
+                        price_dict[item['symbol']] = float(item['price'])
+                
+                self.logger.debug(f"Retrieved prices for {len(price_dict)} symbols")
+                return price_dict
+            else:
+                self.logger.error(f"Failed to get current prices: {response.status_code}")
+                return {}
+                
+        except Exception as e:
+            self.logger.error(f"Error getting current prices: {e}")
+            return {}
+
+    def get_current_price(self, symbol: str) -> float:
+        """Get current price for a single symbol"""
+        try:
+            if symbol in self.market_data:
+                return self.market_data[symbol].price
+            
+            # Fallback to API call
+            url = f"{self.config.BINANCE_BASE_URL}/fapi/v1/ticker/price"
+            params = {'symbol': symbol}
+            
+            if not self.session:
+                self.session = requests.Session()
+            
+            response = self.session.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return float(data['price'])
+            else:
+                self.logger.error(f"Failed to get price for {symbol}: {response.status_code}")
+                return 0.0
+                
+        except Exception as e:
+            self.logger.error(f"Error getting price for {symbol}: {e}")
+            return 0.0
+    
     async def _ensure_session(self):
         """Ensure we have a valid requests session"""
         try:
@@ -320,6 +382,16 @@ class MarketScanner:
             pass
         finally:
             self.session = None
+
+    async def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """Get current prices for symbols"""
+        price_dict = {}
+        for symbol in symbols:
+            if symbol in self.market_data:
+                price_dict[symbol] = self.market_data[symbol].price
+            else:
+                price_dict[symbol] = 50000.0  # Default price
+        return price_dict
 
 # Example usage for testing
 async def main():

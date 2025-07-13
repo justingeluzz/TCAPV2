@@ -23,6 +23,10 @@ from technical_analyzer import TechnicalAnalyzer
 from signal_generator import SignalGenerator, TradingSignal
 from risk_manager import RiskManager, Position
 from order_executor import OrderExecutor
+from trade_logger import TradeLogger, CompletedTrade
+from atr_risk_manager import ATRRiskManager
+from trade_failure_analyzer import TradeFailureAnalyzer
+from position_manager import PositionManager, OpenPosition
 
 class TcapEngine:
     """
@@ -39,6 +43,12 @@ class TcapEngine:
         self.signal_generator = SignalGenerator()
         self.risk_manager = RiskManager()
         self.order_executor = OrderExecutor()
+        self.trade_logger = TradeLogger()  # Add trade logger
+        
+        # Initialize enhanced components
+        self.atr_risk_manager = ATRRiskManager()
+        self.trade_analyzer = TradeFailureAnalyzer()
+        self.position_manager = PositionManager(max_positions=3)
         
         # Engine state
         self.is_running = False
@@ -46,6 +56,13 @@ class TcapEngine:
         self.start_time = None
         self.total_trades = 0
         self.successful_trades = 0
+        
+        # Enhanced tracking
+        self.current_signals = []
+        self.signal_confidence_threshold = 58  # Optimized for realistic 8%/20% targets
+        self.last_performance_review = datetime.now()
+        self.daily_trade_count = 0
+        self.last_reset_date = datetime.now().date()
         
         # Continuous monitoring (like TCAP v2)
         self.continuous_update = True
@@ -281,7 +298,7 @@ class TcapEngine:
             return False
 
     async def _process_new_signals(self):
-        """Process new trading signals"""
+        """Enhanced signal processing with 3-position limit and profit optimization"""
         try:
             # Get market candidates from scanner
             candidates = self.market_scanner.get_latest_candidates()
@@ -290,7 +307,7 @@ class TcapEngine:
             
             self.logger.info(f"Processing {len(candidates)} market candidates...")
             
-            # Generate signals for candidates
+            # Generate signals for candidates using enhanced filtering
             signals = []
             for candidate in candidates:
                 try:
@@ -299,33 +316,95 @@ class TcapEngine:
                     if not tech_data:
                         continue
                     
-                    # Generate signal
-                    signal = await self.signal_generator.generate_signal(candidate, tech_data)
-                    if signal:
+                    # Generate signal with enhanced evaluation
+                    signal = await self.signal_generator.generate_enhanced_signal(candidate, tech_data)
+                    if signal and signal.confidence >= self.signal_confidence_threshold:
                         signals.append(signal)
                         
                 except Exception as e:
                     self.logger.warning(f"WARNING: Error processing {candidate.symbol}: {e}")
             
-            # Execute signals
+            # Sort signals by confidence and potential profit
+            signals.sort(key=lambda s: (s.confidence, self._estimate_signal_potential(s)), reverse=True)
+            
+            self.logger.info(f"Generated {len(signals)} high-quality signals (>={self.signal_confidence_threshold}% confidence)")
+            
+            # Process signals with position management
             for signal in signals:
-                await self._execute_signal(signal)
+                if await self._should_execute_signal(signal):
+                    await self._execute_enhanced_signal(signal)
                 
         except Exception as e:
             self.logger.error(f"ERROR: Error processing new signals: {e}")
 
-    async def _execute_signal(self, signal: TradingSignal):
-        """Execute a trading signal"""
+    async def _should_execute_signal(self, signal: TradingSignal) -> bool:
+        """Determine if signal should be executed considering position limits"""
         try:
-            self.logger.info(f"Processing {signal.signal_type} signal for {signal.symbol}")
+            # Check if we can open new position
+            if self.position_manager.can_open_new_position():
+                return True
             
-            # Check if we can afford this position
+            # Check if we should replace an existing position
+            estimated_potential = self._estimate_signal_potential(signal)
+            should_replace, position_to_replace = self.position_manager.should_replace_position(
+                signal.confidence, estimated_potential
+            )
+            
+            if should_replace and position_to_replace:
+                self.logger.info(f"Replacing position {position_to_replace} with {signal.symbol} signal")
+                
+                # Close the existing position
+                removed_position = self.position_manager.remove_position(position_to_replace, "replaced_for_better")
+                if removed_position:
+                    # Close the actual trade
+                    await self._close_position_for_replacement(removed_position)
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error determining signal execution: {e}")
+            return False
+
+    async def _execute_enhanced_signal(self, signal: TradingSignal):
+        """Execute a trading signal with enhanced features"""
+        try:
+            self.logger.info(f"Executing {signal.signal_type} signal for {signal.symbol}")
+            self.logger.info(f"  Confidence: {signal.confidence:.1f}%")
+            self.logger.info(f"  Reason: {signal.reason}")
+            
+            # Calculate position size with enhanced risk management
             position_size = self.risk_manager.calculate_position_size(
                 signal, self.current_capital
             )
             
             if position_size <= 0:
+                self.logger.warning(f"Position size too small for {signal.symbol}")
                 return
+            
+            # Calculate ATR-based stop loss
+            atr_stop_loss, atr_reasoning = self.atr_risk_manager.calculate_atr_stop_loss(
+                signal.symbol, signal.entry_price, signal.signal_type
+            )
+            
+            # Update signal with ATR stop loss
+            signal.stop_loss = atr_stop_loss
+            
+            # Log trade entry reasoning
+            trade_entry_data = {
+                'symbol': signal.symbol,
+                'side': signal.signal_type,
+                'entry_price': signal.entry_price,
+                'confidence': signal.confidence,
+                'entry_reasons': signal.reason.split(' + '),
+                'rsi': getattr(signal, 'rsi', 0),
+                'macd_signal': 'bullish' if getattr(signal, 'macd_bullish', False) else 'bearish',
+                'volume_ratio': getattr(signal, 'volume_ratio', 0),
+                'price_change_24h': getattr(signal, 'price_change_24h', 0),
+                'stop_loss_reasoning': atr_reasoning
+            }
+            
+            trade_id = self.trade_analyzer.log_trade_entry(trade_entry_data)
             
             # Execute the order
             order_result = await self.order_executor.execute_signal(signal, position_size)
@@ -333,20 +412,113 @@ class TcapEngine:
                 self.logger.error(f"ERROR: Failed to execute order: {order_result.error_message}")
                 return
             
-            # Create position tracking
+            # Create position for tracking
             position = self.risk_manager.create_position(signal, order_result)
             if not position:
                 self.logger.error(f"ERROR: Failed to create position for {signal.symbol}")
                 return
             
-            self.logger.info(f"Position opened: {signal.signal_type} {signal.symbol}")
-            self.total_trades += 1
+            # Add to position manager
+            open_position = OpenPosition(
+                trade_id=trade_id,
+                symbol=signal.symbol,
+                side=signal.signal_type,
+                entry_time=datetime.now(),
+                entry_price=signal.entry_price,
+                current_price=signal.entry_price,
+                position_size=position_size,
+                unrealized_pnl=0.0,
+                unrealized_pnl_pct=0.0,
+                confidence_score=signal.confidence,
+                stop_loss=signal.stop_loss,
+                take_profit_1=signal.take_profit_1,
+                take_profit_2=signal.take_profit_2
+            )
             
-            # Set up exit orders
-            await self._setup_exit_orders(position)
+            if self.position_manager.add_position(open_position):
+                self.logger.info(f"Position opened successfully: {signal.signal_type} {signal.symbol}")
+                self.logger.info(f"  Entry: {signal.entry_price:.6f}, Size: PHP {position_size:.0f}")
+                self.logger.info(f"  Stop Loss: {signal.stop_loss:.6f} ({atr_reasoning})")
+                self.logger.info(f"  Take Profits: {signal.take_profit_1:.6f}, {signal.take_profit_2:.6f}")
+                
+                self.total_trades += 1
+                self.daily_trade_count += 1
+                
+                # Set up exit orders
+                await self._setup_exit_orders(position)
+                
+                # Log successful trade opening
+                completed_trade = CompletedTrade(
+                    trade_id=trade_id,
+                    symbol=signal.symbol,
+                    side=signal.signal_type,
+                    entry_time=datetime.now(),
+                    entry_price=signal.entry_price,
+                    exit_time=None,
+                    exit_price=None,
+                    quantity=position_size / signal.entry_price,
+                    profit_loss=0,
+                    profit_loss_pct=0,
+                    exit_reason="OPENED",
+                    confidence=signal.confidence,
+                    stop_loss=signal.stop_loss,
+                    take_profit_1=signal.take_profit_1,
+                    take_profit_2=signal.take_profit_2
+                )
+                
+                await self.trade_logger.log_trade(completed_trade)
             
         except Exception as e:
-            self.logger.error(f"ERROR: Error executing signal for {signal.symbol}: {e}")
+            self.logger.error(f"ERROR: Error executing enhanced signal for {signal.symbol}: {e}")
+
+    def _estimate_signal_potential(self, signal: TradingSignal) -> float:
+        """Estimate profit potential of a signal"""
+        try:
+            # Calculate potential profit to first and second take profit levels
+            if signal.signal_type == "LONG":
+                tp1_potential = (signal.take_profit_1 - signal.entry_price) / signal.entry_price * 100
+                tp2_potential = (signal.take_profit_2 - signal.entry_price) / signal.entry_price * 100
+            else:  # SHORT
+                tp1_potential = (signal.entry_price - signal.take_profit_1) / signal.entry_price * 100
+                tp2_potential = (signal.entry_price - signal.take_profit_2) / signal.entry_price * 100
+            
+            # Weighted average (30% to TP1, 70% to TP2)
+            estimated_potential = (tp1_potential * 0.3 + tp2_potential * 0.7)
+            
+            return max(0, estimated_potential)
+            
+        except Exception as e:
+            self.logger.error(f"Error estimating signal potential: {e}")
+            return 0
+
+    async def _close_position_for_replacement(self, position: OpenPosition):
+        """Close a position to make room for a better opportunity"""
+        try:
+            self.logger.info(f"Closing position {position.symbol} for replacement")
+            
+            # Execute market close order
+            close_result = await self.order_executor.close_position_market(position.symbol, position.side)
+            
+            if close_result.success:
+                # Log trade exit
+                exit_data = {
+                    'exit_price': position.current_price,
+                    'exit_reason': 'Replaced for better opportunity',
+                    'exit_type': 'MANUAL',
+                    'profit_loss': position.unrealized_pnl,
+                    'profit_loss_pct': position.unrealized_pnl_pct,
+                    'market_condition': 'replacement'
+                }
+                
+                self.trade_analyzer.log_trade_exit(position.trade_id, exit_data)
+                
+                self.logger.info(f"Position {position.symbol} closed successfully")
+                self.logger.info(f"  Final P&L: PHP {position.unrealized_pnl:.2f} ({position.unrealized_pnl_pct:+.2f}%)")
+            else:
+                self.logger.error(f"Failed to close position {position.symbol} for replacement")
+                
+        except Exception as e:
+            self.logger.error(f"Error closing position for replacement: {e}")
 
     async def _setup_exit_orders(self, position: Position):
         """Set up stop loss and take profit orders"""
@@ -367,53 +539,271 @@ class TcapEngine:
             self.logger.error(f"ERROR: Error setting up exit orders for {position.symbol}: {e}")
 
     async def _update_positions(self):
-        """Update all open positions"""
+        """Enhanced position monitoring with profit optimization"""
         try:
-            for symbol, position in list(self.risk_manager.positions.items()):
-                # Get current price
-                current_price = await self.order_executor.get_current_price(symbol)
-                if current_price is None:
-                    continue
-                
-                # Update position
-                self.risk_manager.update_position_price(symbol, current_price)
-                
-                # Check for exit signals
-                if self.risk_manager.should_exit_position(symbol):
-                    await self._handle_position_exit(position)
-                    
-        except Exception as e:
-            self.logger.error(f"ERROR: Error updating positions: {e}")
-
-    async def _handle_position_exit(self, position: Position):
-        """Handle position exit"""
-        try:
-            # Determine exit reason and percentage
-            exit_percentage = 1.0  # Full exit for now
-            reason = "technical_signal"
+            # Get current market prices for all open positions
+            if not self.position_manager.open_positions:
+                return
             
-            # Close position
-            close_result = await self.order_executor.close_position(
-                position, exit_percentage, reason
-            )
+            symbols = [pos.symbol for pos in self.position_manager.open_positions]
+            price_data = await self.market_scanner.get_current_prices(symbols)
+            
+            # Update all positions with current prices
+            self.position_manager.update_all_positions(price_data)
+            
+            # Check for exit conditions
+            for position in self.position_manager.open_positions.copy():  # Copy to avoid modification during iteration
+                await self._check_position_exit_conditions(position)
+            
+            # Log portfolio summary every 10 minutes
+            if datetime.now().minute % 10 == 0:
+                self._log_portfolio_summary()
+            
+            # Daily performance review
+            if datetime.now() - self.last_performance_review > timedelta(hours=24):
+                await self._perform_daily_performance_review()
+                self.last_performance_review = datetime.now()
+            
+            # Reset daily trade count at midnight
+            current_date = datetime.now().date()
+            if current_date != self.last_reset_date:
+                self.daily_trade_count = 0
+                self.last_reset_date = current_date
+                
+        except Exception as e:
+            self.logger.error(f"Error updating positions: {e}")
+
+    async def _check_position_exit_conditions(self, position: OpenPosition):
+        """Check if position should be closed based on various conditions"""
+        try:
+            current_price = position.current_price
+            
+            # Stop loss check
+            if position.side == "LONG" and current_price <= position.stop_loss:
+                await self._close_position(position, "STOP_LOSS", "Stop loss triggered")
+                return
+            elif position.side == "SHORT" and current_price >= position.stop_loss:
+                await self._close_position(position, "STOP_LOSS", "Stop loss triggered")
+                return
+            
+            # Take profit checks
+            if position.side == "LONG":
+                if current_price >= position.take_profit_2:
+                    await self._close_position(position, "TAKE_PROFIT", "Take profit 2 reached")
+                    return
+                elif current_price >= position.take_profit_1 and position.unrealized_pnl_pct >= 15:
+                    # Close 50% at TP1 if significant profit
+                    await self._partial_close_position(position, 0.5, "PARTIAL_PROFIT", "Take profit 1 reached")
+            else:  # SHORT
+                if current_price <= position.take_profit_2:
+                    await self._close_position(position, "TAKE_PROFIT", "Take profit 2 reached")
+                    return
+                elif current_price <= position.take_profit_1 and position.unrealized_pnl_pct >= 15:
+                    await self._partial_close_position(position, 0.5, "PARTIAL_PROFIT", "Take profit 1 reached")
+            
+            # Time-based exit (positions open too long without significant profit)
+            if position.hold_duration_minutes >= 480:  # 8 hours
+                if position.unrealized_pnl_pct < 5:  # Less than 5% profit
+                    await self._close_position(position, "TIME_BASED", "Position held too long without profit")
+                    return
+            
+            # Trailing stop logic for profitable positions
+            if position.unrealized_pnl_pct >= 10:  # Position is 10%+ profitable
+                await self._check_trailing_stop(position)
+                
+        except Exception as e:
+            self.logger.error(f"Error checking exit conditions for {position.symbol}: {e}")
+
+    async def _close_position(self, position: OpenPosition, exit_type: str, reason: str):
+        """Close a position completely"""
+        try:
+            self.logger.info(f"Closing position {position.symbol}: {reason}")
+            
+            # Execute market close order
+            close_result = await self.order_executor.close_position_market(position.symbol, position.side)
             
             if close_result.success:
-                # Update position tracking
-                realized_pnl = self.risk_manager.close_position(
-                    position.symbol, reason, exit_percentage
-                )
+                # Calculate final metrics
+                final_pnl = position.unrealized_pnl
+                final_pnl_pct = position.unrealized_pnl_pct
+                
+                # Log trade exit for analysis
+                exit_data = {
+                    'exit_price': position.current_price,
+                    'exit_reason': reason,
+                    'exit_type': exit_type,
+                    'profit_loss': final_pnl,
+                    'profit_loss_pct': final_pnl_pct,
+                    'market_condition': 'normal',  # Could be enhanced with market condition detection
+                    'volatility_info': self.atr_risk_manager.get_volatility_info(position.symbol)
+                }
+                
+                self.trade_analyzer.log_trade_exit(position.trade_id, exit_data)
+                
+                # Remove from position manager
+                self.position_manager.remove_position(position.trade_id, exit_type.lower())
+                
+                # Update statistics
+                if final_pnl > 0:
+                    self.successful_trades += 1
                 
                 # Update capital
-                self.current_capital += realized_pnl
+                self.current_capital += final_pnl
                 
-                if realized_pnl > 0:
-                    self.successful_trades += 1
-                    self.logger.info(f"Take profit hit: {position.symbol} - PnL: ${realized_pnl:.2f}")
-                else:
-                    self.logger.info(f"Stop loss hit: {position.symbol} - PnL: ${realized_pnl:.2f}")
-                    
+                # Log trade completion
+                completed_trade = CompletedTrade(
+                    trade_id=position.trade_id,
+                    symbol=position.symbol,
+                    side=position.side,
+                    entry_time=position.entry_time,
+                    entry_price=position.entry_price,
+                    exit_time=datetime.now(),
+                    exit_price=position.current_price,
+                    quantity=position.position_size / position.entry_price,
+                    profit_loss=final_pnl,
+                    profit_loss_pct=final_pnl_pct,
+                    exit_reason=reason,
+                    confidence=position.confidence_score,
+                    stop_loss=position.stop_loss,
+                    take_profit_1=position.take_profit_1,
+                    take_profit_2=position.take_profit_2
+                )
+                
+                await self.trade_logger.log_trade(completed_trade)
+                
+                self.logger.info(f"Position {position.symbol} closed successfully")
+                self.logger.info(f"  Final P&L: PHP {final_pnl:.2f} ({final_pnl_pct:+.2f}%)")
+                self.logger.info(f"  Hold Duration: {position.hold_duration_minutes} minutes")
+                self.logger.info(f"  New Capital: PHP {self.current_capital:.2f}")
+                
+            else:
+                self.logger.error(f"Failed to close position {position.symbol}: {close_result.error_message}")
+                
         except Exception as e:
-            self.logger.error(f"ERROR: Error handling exit signal for {position.symbol}: {e}")
+            self.logger.error(f"Error closing position {position.symbol}: {e}")
+
+    async def _partial_close_position(self, position: OpenPosition, close_percentage: float, exit_type: str, reason: str):
+        """Close part of a position"""
+        try:
+            self.logger.info(f"Partially closing {close_percentage*100:.0f}% of {position.symbol}: {reason}")
+            
+            # Calculate partial size
+            close_size = position.position_size * close_percentage
+            
+            # Execute partial close
+            close_result = await self.order_executor.close_partial_position(position.symbol, position.side, close_size)
+            
+            if close_result.success:
+                # Update position size
+                partial_pnl = position.unrealized_pnl * close_percentage
+                position.position_size *= (1 - close_percentage)
+                
+                # Update capital
+                self.current_capital += partial_pnl
+                
+                self.logger.info(f"Partial close successful: PHP {partial_pnl:.2f} profit realized")
+                
+        except Exception as e:
+            self.logger.error(f"Error partially closing position {position.symbol}: {e}")
+
+    async def _check_trailing_stop(self, position: OpenPosition):
+        """Implement trailing stop for profitable positions"""
+        try:
+            # Simple trailing stop: move stop loss to break-even + 2% once position is 10%+ profitable
+            if position.unrealized_pnl_pct >= 10:
+                if position.side == "LONG":
+                    new_stop = position.entry_price * 1.02  # 2% above entry
+                    if new_stop > position.stop_loss:
+                        position.stop_loss = new_stop
+                        self.logger.info(f"Trailing stop updated for {position.symbol}: {new_stop:.6f}")
+                else:  # SHORT
+                    new_stop = position.entry_price * 0.98  # 2% below entry
+                    if new_stop < position.stop_loss:
+                        position.stop_loss = new_stop
+                        self.logger.info(f"Trailing stop updated for {position.symbol}: {new_stop:.6f}")
+                        
+        except Exception as e:
+            self.logger.error(f"Error updating trailing stop for {position.symbol}: {e}")
+
+    def _log_portfolio_summary(self):
+        """Log comprehensive portfolio summary"""
+        try:
+            summary = self.position_manager.get_portfolio_summary()
+            
+            if summary['open_positions'] == 0:
+                self.logger.info("Portfolio Status: No open positions")
+                return
+            
+            self.logger.info("=" * 60)
+            self.logger.info("PORTFOLIO SUMMARY")
+            self.logger.info("=" * 60)
+            self.logger.info(f"Open Positions: {summary['open_positions']}/3")
+            self.logger.info(f"Total Unrealized P&L: PHP {summary['total_unrealized_pnl']:.2f} ({summary['total_unrealized_pnl_pct']:+.2f}%)")
+            self.logger.info(f"Average Confidence: {summary['avg_confidence']:.1f}%")
+            
+            if summary['best_performer']:
+                best = summary['best_performer']
+                self.logger.info(f"Best Performer: {best['symbol']} ({best['pnl_pct']:+.2f}%)")
+            
+            if summary['worst_performer']:
+                worst = summary['worst_performer']
+                self.logger.info(f"Worst Performer: {worst['symbol']} ({worst['pnl_pct']:+.2f}%)")
+            
+            self.logger.info("Individual Positions:")
+            for pos in summary['positions']:
+                self.logger.info(f"  {pos['symbol']} {pos['side']}: PHP {pos['pnl']:.2f} ({pos['pnl_pct']:+.2f}%) | {pos['duration_minutes']}min | {pos['confidence']:.0f}%")
+            
+            self.logger.info("=" * 60)
+            
+        except Exception as e:
+            self.logger.error(f"Error logging portfolio summary: {e}")
+
+    async def _perform_daily_performance_review(self):
+        """Perform comprehensive daily performance analysis"""
+        try:
+            self.logger.info("=" * 60)
+            self.logger.info("DAILY PERFORMANCE REVIEW")
+            self.logger.info("=" * 60)
+            
+            # Generate failure analysis report
+            performance_report = self.trade_analyzer.generate_performance_report()
+            
+            if 'error' not in performance_report:
+                summary = performance_report.get('summary', {})
+                self.logger.info(f"Trades Today: {self.daily_trade_count}")
+                self.logger.info(f"Total Trades: {summary.get('total_trades', 0)}")
+                self.logger.info(f"Win Rate: {summary.get('win_rate', 'N/A')}")
+                self.logger.info(f"Successful Trades: {summary.get('successful_trades', 0)}")
+                
+                # Log top failure categories
+                failure_analysis = performance_report.get('failure_analysis', {})
+                top_failures = failure_analysis.get('top_failure_categories', [])
+                if top_failures:
+                    self.logger.info("Top Failure Categories:")
+                    for category, count in top_failures[:3]:
+                        self.logger.info(f"  {category}: {count} occurrences")
+                
+                # Log recommendations
+                recommendations = performance_report.get('recommendations', [])
+                if recommendations:
+                    self.logger.info("Strategy Recommendations:")
+                    for rec in recommendations[:3]:
+                        self.logger.info(f"  - {rec}")
+            
+            # Position manager statistics
+            replacement_stats = self.position_manager.get_replacement_statistics()
+            self.logger.info(f"Position Replacements: {replacement_stats['positions_closed_for_better']}")
+            self.logger.info(f"Replacement Rate: {replacement_stats['replacement_rate']:.1f}%")
+            
+            # Current capital and performance
+            win_rate = (self.successful_trades / self.total_trades * 100) if self.total_trades > 0 else 0
+            self.logger.info(f"Current Capital: PHP {self.current_capital:.2f}")
+            self.logger.info(f"Overall Win Rate: {win_rate:.1f}%")
+            
+            self.logger.info("=" * 60)
+            
+        except Exception as e:
+            self.logger.error(f"Error in daily performance review: {e}")
 
     async def _perform_risk_checks(self):
         """Perform comprehensive risk management checks"""
@@ -539,6 +929,9 @@ class TcapEngine:
             risk_metrics = self.risk_manager.get_risk_metrics(self.current_capital)
             runtime = datetime.now() - self.start_time if self.start_time else timedelta(0)
             
+            # Get trade summary from trade logger
+            trade_summary = self.trade_logger.get_daily_summary()
+            
             self.logger.info("=" * 80)
             self.logger.info("TCAP v3 DAILY SUMMARY")
             self.logger.info("=" * 80)
@@ -552,6 +945,17 @@ class TcapEngine:
             self.logger.info(f"   Successful Trades: {self.successful_trades}")
             self.logger.info(f"   Success Rate: {(self.successful_trades/max(1,self.total_trades))*100:.1f}%")
             self.logger.info(f"   Open Positions: {risk_metrics.open_positions}")
+            
+            # Add detailed trade statistics
+            if trade_summary['total_trades'] > 0:
+                self.logger.info("   --- COMPLETED TRADES BREAKDOWN ---")
+                self.logger.info(f"   Completed Trades: {trade_summary['total_trades']}")
+                self.logger.info(f"   Winning Trades: {trade_summary['winning_trades']}")
+                self.logger.info(f"   Losing Trades: {trade_summary['losing_trades']}")
+                self.logger.info(f"   Completion Win Rate: {trade_summary['win_rate']:.1f}%")
+                self.logger.info(f"   Total Completed P&L: ${trade_summary['total_profit']:+.2f}")
+                self.logger.info(f"   Avg P&L per Completed Trade: ${trade_summary['avg_profit_per_trade']:+.2f}")
+            
             self.logger.info("=" * 80)
             
             # Reset daily counters if needed

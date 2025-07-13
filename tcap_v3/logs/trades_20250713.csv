@@ -1,0 +1,1 @@
+timestamp,trade_id,symbol,side,entry_time,exit_time,entry_price,exit_price,quantity,position_size_usdt,exit_reason,profit_loss,profit_loss_percent,duration_seconds,fees,net_profit,confidence,technical_reason,market_conditions
